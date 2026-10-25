@@ -1,5 +1,7 @@
 # RoomPeace
 
+demo video - https://drive.google.com/file/d/1wMkBncwtRzVuXd2tP6DrbRaCU6_NYJfU/view?usp=sharing
+
 Three personal AI agents that help three roommates agree on household responsibilities, privately. Supports Track 2 (agent-to-agent coordination) and Track 3 (Group Chat Assistant) through the same interface.
 
 Each roommate talks only to their own agent. The existing **Agent negotiation** tab is the prototype group conversation. The agents trade just the facts each student approved, summarize concerns neutrally, separate shared facts/preferences/constraints/assumptions, identify schedule conflicts, and offer two or three options. Nothing becomes final until all three students approve the same version. There are no external chat or calendar integrations.
