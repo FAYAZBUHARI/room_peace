@@ -29,14 +29,21 @@ export function useSeat(token: string | null): SeatHandle {
   const [pending, setPending] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
   const viewRef = useRef<SeatView | null>(null);
+  const actionEpoch = useRef(0);
+  const pendingRef = useRef(false);
   viewRef.current = view;
 
   const refresh = useCallback(async () => {
-    if (!token) return;
+    if (!token || pendingRef.current) return;
+    const epoch = actionEpoch.current;
     const res = await fetch(`/api/seat/${token}`, { cache: "no-store" }).catch(() => null);
+    if (pendingRef.current || epoch !== actionEpoch.current) return;
     if (!res) return;
     if (res.status === 404) return setNotFound(true);
-    if (res.ok) setView(await res.json());
+    if (res.ok) {
+      const next = await res.json();
+      if (!pendingRef.current && epoch === actionEpoch.current) setView(next);
+    }
   }, [token]);
 
   useEffect(() => {
@@ -59,7 +66,9 @@ export function useSeat(token: string | null): SeatHandle {
 
   const act = useCallback(
     async (a: SeatAction) => {
-      if (!token) return;
+      if (!token || pendingRef.current) return;
+      pendingRef.current = true;
+      actionEpoch.current += 1;
       setPending(true);
       setFlash(null);
       // Show the student's own message right away while the agent thinks.
@@ -82,6 +91,8 @@ export function useSeat(token: string | null): SeatHandle {
       } catch {
         setFlash("Couldn't reach the server.");
       } finally {
+        pendingRef.current = false;
+        actionEpoch.current += 1;
         setPending(false);
       }
     },

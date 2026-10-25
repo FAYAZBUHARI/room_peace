@@ -123,6 +123,8 @@ export type RoomStatus =
   | "no_agreement";
 
 export interface Room {
+  /** Persisted work budget for request-driven serverless negotiation. */
+  agentSteps?: number;
   /** Stops coordination without exposing the private trigger. */
   safetyStopped?: boolean;
   id: string;

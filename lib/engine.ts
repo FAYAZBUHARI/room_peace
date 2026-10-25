@@ -1,6 +1,6 @@
 import * as realAgents from "./agents";
 import { AgentError, allowedActions, renderTasks } from "./agents";
-import { newId, putRoom, save } from "./store";
+import { newId, putRoom, save, isDatabaseRequest } from "./store";
 import type { ExchangeEntry, Room, Seat, SeatState, SeatView } from "./types";
 import { MAX_DECLINES, PRIVATE_BY_DEFAULT, SEATS, othersOf, rotationOrder } from "./types";
 import { hasSafetyConcern, SUPPORT } from "./safety";
@@ -338,6 +338,7 @@ export function setReminders(room: Room, seat: Seat, on: boolean) {
 const running = new Set<string>();
 
 export function kick(room: Room) {
+  if (isDatabaseRequest()) return; // Database routes await one bounded turn per poll.
   if (room.status !== "negotiating" || running.has(room.id) || !agents.hasApiKey()) return;
   running.add(room.id);
   negotiate(room)
@@ -390,6 +391,23 @@ async function negotiate(room: Room) {
   }
   if (room.status === "negotiating") {
     endWithoutAgreement(room, "The agents ran out of turns without an agreement.");
+  }
+}
+
+/** Called inside the database row transaction; no work survives the request. */
+export async function advanceNegotiation(room: Room) {
+  if (!isDatabaseRequest() || room.status !== "negotiating" || room.error || room.safetyStopped || !agents.hasApiKey()) return;
+  if ((room.agentSteps ?? 0) >= MAX_AGENT_STEPS * 2) {
+    endWithoutAgreement(room, "The agents ran out of turns without an agreement.");
+    return;
+  }
+  if (!allowedActions(room, room.turn).length) room.turn = nextTurn(room, room.turn);
+  try {
+    const move = await agents.runNegotiator(room, room.turn);
+    room.agentSteps = (room.agentSteps ?? 0) + 1;
+    applyMove(room, room.turn, move);
+  } catch (error) {
+    room.error = error instanceof AgentError ? error.message : "An agent failed to respond. Please retry.";
   }
 }
 

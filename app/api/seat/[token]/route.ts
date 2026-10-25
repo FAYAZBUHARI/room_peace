@@ -12,17 +12,29 @@ import {
   setReminders,
   studentChat,
   viewFor,
+  advanceNegotiation,
 } from "@/lib/engine";
 import { findBySeatToken } from "@/lib/store";
+import { accessStoredRoom, StorageError, storageResponse, usesDatabase } from "@/lib/database";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 type Params = { params: Promise<{ token: string }> };
 
 export async function GET(_req: Request, { params }: Params) {
-  const found = findBySeatToken((await params).token);
-  if (!found) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(viewFor(found.room, found.seat));
+  const { token } = await params;
+  const read = async (advance: boolean) => accessStoredRoom(token, "seat", advance, async () => {
+    const found = findBySeatToken(token);
+    if (!found) return NextResponse.json({ error: "Not found" }, { status: 404 });
+    if (advance) await advanceNegotiation(found.room);
+    return NextResponse.json(viewFor(found.room, found.seat), { headers: { "Cache-Control": "no-store" } });
+  });
+  try {
+    // During another mutation, return committed data instead of waiting on its model call.
+    try { return await read(usesDatabase()); }
+    catch (error) { if (error instanceof StorageError && error.status === 409) return await read(false); throw error; }
+  } catch (error) { return storageResponse(error); }
 }
 
 type Action =
@@ -38,7 +50,13 @@ type Action =
   | { action: "retry" };
 
 export async function POST(req: Request, { params }: Params) {
-  const found = findBySeatToken((await params).token);
+  const { token } = await params;
+  try { return await accessStoredRoom(token, "seat", true, () => performAction(req, token)); }
+  catch (error) { return storageResponse(error); }
+}
+
+async function performAction(req: Request, token: string) {
+  const found = findBySeatToken(token);
   if (!found) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const { room, seat } = found;
   const body = (await req.json().catch(() => null)) as Action | null;
